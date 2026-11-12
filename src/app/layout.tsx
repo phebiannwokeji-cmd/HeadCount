@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "HeadCount",
-  description: "Collect RSVPs from a single link so you know who is coming.",
+  title: {
+    default: "HeadCount",
+    template: "%s | HeadCount",
+  },
 };
 
 export default function RootLayout({
