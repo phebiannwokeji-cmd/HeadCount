@@ -3,6 +3,7 @@
 import { useActionState, useCallback, useEffect, useState } from "react";
 
 import {
+  requestPasswordReset,
   resendSignupConfirmation,
   signIn,
   signUp,
@@ -11,7 +12,7 @@ import {
 
 import styles from "./auth-screen.module.css";
 
-type AuthMode = "signup" | "login";
+type AuthMode = "signup" | "login" | "recovery";
 
 const INITIAL_RESULT: AuthActionResult = { status: "error", message: "" };
 
@@ -25,11 +26,14 @@ export default function AuthScreen() {
     const callbackError =
       hashParams.get("error_code") || hashParams.get("error");
     const confirmationResult = currentUrl.searchParams.get("confirmation");
+    const resetResult = currentUrl.searchParams.get("reset");
 
-    if (callbackError || confirmationResult) {
+    if (callbackError || confirmationResult || resetResult) {
       setMode("login");
       setConfirmationMessage(
-        "That confirmation link is invalid or expired. Enter your email and request a fresh link below.",
+        resetResult
+          ? "That password reset link is invalid or expired. Request a new one below."
+          : "That confirmation link is invalid or expired. Enter your email and request a fresh link below.",
       );
       window.history.replaceState({}, document.title, currentUrl.pathname);
     }
@@ -69,7 +73,11 @@ function AuthPanel({
 }) {
   const action = useCallback(
     async (_previousResult: AuthActionResult, formData: FormData) =>
-      mode === "signup" ? signUp(formData) : signIn(formData),
+      mode === "signup"
+        ? signUp(formData)
+        : mode === "recovery"
+          ? requestPasswordReset(_previousResult, formData)
+          : signIn(formData),
     [mode],
   );
   const [result, formAction, isPending] = useActionState(
@@ -83,6 +91,7 @@ function AuthPanel({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const isSignup = mode === "signup";
+  const isRecovery = mode === "recovery";
 
   useEffect(() => {
     if (!isPending && result.status !== "error" && result.message) {
@@ -95,35 +104,52 @@ function AuthPanel({
       <div className={styles.intro}>
         <p className={styles.eyebrow}>Welcome to HeadCount</p>
         <h1 id="auth-title">
-          {isSignup ? "Bring your guest list together." : "Welcome back."}
+          {isSignup
+            ? "Bring your guest list together."
+            : isRecovery
+              ? "Reset your password."
+              : "Welcome back."}
         </h1>
         <p className={styles.description}>
           {isSignup
             ? "Create an account to plan your event and keep track of who is coming."
-            : "Sign in to get back to your events and guest lists."}
+            : isRecovery
+              ? "We’ll send a link to the email address on your account."
+              : "Sign in to get back to your events and guest lists."}
         </p>
       </div>
 
-      <div className={styles.modeSwitch} aria-label="Choose an account action">
+      {isRecovery ? (
         <button
-          className={isSignup ? styles.selectedMode : styles.modeButton}
+          className={styles.textButton}
           type="button"
-          aria-pressed={isSignup}
-          onClick={() => onModeChange("signup")}
-          disabled={isPending}
-        >
-          Sign up
-        </button>
-        <button
-          className={!isSignup ? styles.selectedMode : styles.modeButton}
-          type="button"
-          aria-pressed={!isSignup}
           onClick={() => onModeChange("login")}
           disabled={isPending}
         >
-          Log in
+          Back to log in
         </button>
-      </div>
+      ) : (
+        <div className={styles.modeSwitch} aria-label="Choose an account action">
+          <button
+            className={isSignup ? styles.selectedMode : styles.modeButton}
+            type="button"
+            aria-pressed={isSignup}
+            onClick={() => onModeChange("signup")}
+            disabled={isPending}
+          >
+            Sign up
+          </button>
+          <button
+            className={!isSignup ? styles.selectedMode : styles.modeButton}
+            type="button"
+            aria-pressed={!isSignup}
+            onClick={() => onModeChange("login")}
+            disabled={isPending}
+          >
+            Log in
+          </button>
+        </div>
+      )}
 
       <form className={styles.form} action={formAction}>
         {confirmationMessage ? (
@@ -150,25 +176,43 @@ function AuthPanel({
           />
         </label>
 
-        <label className={styles.field} htmlFor="password">
-          <span>Password</span>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete={isSignup ? "new-password" : "current-password"}
-            placeholder="Enter your password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            disabled={isPending}
-          />
-        </label>
+        {!isRecovery ? (
+          <>
+            <label className={styles.field} htmlFor="password">
+              <span>Password</span>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={isSignup ? "new-password" : "current-password"}
+                placeholder="Enter your password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                disabled={isPending}
+              />
+            </label>
+            {!isSignup ? (
+              <button
+                className={styles.textButton}
+                type="button"
+                onClick={() => onModeChange("recovery")}
+                disabled={isPending}
+              >
+                Forgot password?
+              </button>
+            ) : null}
+          </>
+        ) : null}
 
         <div className={styles.feedback} aria-live="polite" aria-atomic="true">
           {isPending ? (
             <p className={styles.pendingMessage} role="status">
-              {isSignup ? "Creating your account…" : "Signing you in…"}
+              {isSignup
+                ? "Creating your account…"
+                : isRecovery
+                  ? "Sending reset link…"
+                  : "Signing you in…"}
             </p>
           ) : result.message ? (
             <p
@@ -192,13 +236,17 @@ function AuthPanel({
           {isPending
             ? isSignup
               ? "Creating account…"
-              : "Signing in…"
+              : isRecovery
+                ? "Sending reset link…"
+                : "Signing in…"
             : isSignup
               ? "Create account"
-              : "Log in"}
+              : isRecovery
+                ? "Send reset link"
+                : "Log in"}
         </button>
 
-        {!isSignup ? (
+        {mode === "login" ? (
           <>
             {resendResult.message ? (
               <p

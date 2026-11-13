@@ -246,6 +246,33 @@
   cursor: wait;
 }
 
+.textButton {
+  width: fit-content;
+  min-height: 36px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #1c4e34;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.textButton:focus-visible {
+  outline: 3px solid rgba(54, 118, 78, 0.28);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.textButton:disabled {
+  color: #809087;
+  cursor: wait;
+}
+
 .footer {
   margin-top: 19px;
   color: #778279;

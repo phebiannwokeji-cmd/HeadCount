@@ -19,6 +19,11 @@ function confirmationCallbackUrl() {
   return new URL("/auth/confirm", appUrl).toString();
 }
 
+function passwordRecoveryCallbackUrl() {
+  const appUrl = process.env.APP_URL || "http://localhost:3000";
+  return new URL("/auth/recover", appUrl).toString();
+}
+
 type CredentialsResult =
   | { valid: true; credentials: Credentials }
   | { valid: false; result: AuthActionResult };
@@ -188,6 +193,95 @@ export async function resendSignupConfirmation(
     return {
       status: "error",
       message: "Unable to resend confirmation email right now. Try again later.",
+    };
+  }
+}
+
+export async function requestPasswordReset(
+  _previousResult: AuthActionResult,
+  formData: FormData,
+): Promise<AuthActionResult> {
+  const parsed = readEmail(formData);
+
+  if (!parsed.valid) {
+    return parsed.result;
+  }
+
+  const neutralMessage =
+    "If an account exists for this email, password reset instructions will arrive shortly. Check your inbox and spam folder.";
+
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(parsed.email, {
+      redirectTo: passwordRecoveryCallbackUrl(),
+    });
+
+    if (error?.status === 429) {
+      return safeAuthError(error, "Unable to request a password reset.");
+    }
+
+    if (error) {
+      return {
+        status: "error",
+        message: "Unable to send reset instructions right now. Try again later.",
+      };
+    }
+
+    // Keep the response neutral so it does not disclose account status.
+    return { status: "notice", message: neutralMessage };
+  } catch {
+    return {
+      status: "error",
+      message: "Unable to request a password reset right now. Try again later.",
+    };
+  }
+}
+
+export async function updatePassword(
+  _previousResult: AuthActionResult,
+  formData: FormData,
+): Promise<AuthActionResult> {
+  const passwordValue = formData.get("password");
+  const confirmPasswordValue = formData.get("confirmPassword");
+
+  if (
+    typeof passwordValue !== "string" ||
+    passwordValue.trim() === "" ||
+    typeof confirmPasswordValue !== "string" ||
+    confirmPasswordValue.trim() === ""
+  ) {
+    return { status: "error", message: "Enter and confirm your new password." };
+  }
+
+  if (passwordValue !== confirmPasswordValue) {
+    return { status: "error", message: "The passwords do not match." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !data.user) {
+      return {
+        status: "error",
+        message: "Your reset link has expired. Request a new password reset email.",
+      };
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: passwordValue });
+
+    if (error) {
+      return safeAuthError(
+        error,
+        "Unable to update the password. Choose a password that meets the project requirements and try again.",
+      );
+    }
+
+    return { status: "success", message: "Your password has been updated." };
+  } catch {
+    return {
+      status: "error",
+      message: "Unable to update the password right now. Try again later.",
     };
   }
 }
